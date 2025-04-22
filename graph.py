@@ -213,3 +213,168 @@ def get_shortest_salary_path(graph, source, method='dijkstra', user_exp=None, us
         if salary_node:
             return path, salary_node
     return None, None
+
+# === Visualization ===
+category_colors = {
+    'Job Role': 'lightblue',
+    'ExpBin': 'lightgreen',
+    'Education Level': 'lightcoral',
+    'SalaryBin': 'lightyellow'
+}
+
+def visualize_only_path(path, graph, title):
+    G_path = nx.Graph()
+    for i in range(len(path) - 1):
+        u, v = path[i], path[i + 1]
+        weight = next((w for nbr, w in graph.adj[u] if nbr == v), 1)
+        G_path.add_edge(u, v, weight=weight)
+
+    pos = nx.spring_layout(G_path)
+    node_colors = []
+    for node in G_path.nodes:
+        if node in avg_salary_job: node_colors.append(category_colors['Job Role'])
+        elif node in avg_salary_exp: node_colors.append(category_colors['ExpBin'])
+        elif node in avg_salary_edu: node_colors.append(category_colors['Education Level'])
+        elif node in salary_bins: node_colors.append(category_colors['SalaryBin'])
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    nx.draw(G_path, pos, with_labels=True, node_color=node_colors, node_size=3000, font_size=10, ax=ax)
+    nx.draw_networkx_edges(G_path, pos, edge_color='red', width=2, ax=ax)
+    ax.set_title(title)
+
+    buf = BytesIO()
+    plt.savefig(buf, format='png')
+    plt.close(fig)
+    buf.seek(0)
+    return buf.getvalue()
+
+# === UI ===
+welcome_text = widgets.HTML(value="<h1>Welcome to the Salary Predictor!</h1>")
+start_button = widgets.Button(description="Start")
+
+name_input = widgets.Text(description="Name:")
+major_input = widgets.Dropdown(options=list(avg_salary_job.keys()), description="Job Role:")
+edu_input = widgets.Dropdown(options=list(avg_salary_edu.keys()), description="Education:")
+exp_input = widgets.BoundedIntText(value=1, min=0, max=40, description="Experience:")
+submit_button = widgets.Button(description="Submit")
+
+output_text = widgets.HTML()
+output_image1 = widgets.Image(format='png')
+output_image2 = widgets.Image(format='png')
+
+def show_input_page(_):
+    welcome_text.close()
+    start_button.close()
+    display(widgets.VBox([name_input, major_input, edu_input, exp_input, submit_button]))
+
+def show_output_page(_):
+    global G
+    user = name_input.value
+    job = major_input.value
+    edu = edu_input.value
+    exp = exp_input.value
+
+    G = build_graph_with_profile(user_exp=exp, user_edu=edu, user_job=job)
+
+    # Dijkstra
+    start_time_dijkstra = time.time()
+    path_d, salary_d = get_shortest_salary_path(G, job, method='dijkstra', user_exp=exp, user_edu=edu, user_job=job)
+    dijkstra_duration = time.time() - start_time_dijkstra
+
+    # Bellman-Ford
+    start_time_bf = time.time()
+    path_bf, salary_bf = get_shortest_salary_path(G, job, method='bellman_ford', user_exp=exp, user_edu=edu, user_job=job)
+    bf_duration = time.time() - start_time_bf
+
+    if salary_d is None and salary_bf is None:
+        output_text.value = "<h2 style='font-size:18px;'>No valid path found for your selection.</h2>"
+        display(widgets.VBox([output_text]))
+        return
+
+    # Prepare image output and timings
+    if path_d:
+        output_image1.value = visualize_only_path(path_d, G, "Dijkstra Path")
+        dijkstra_widget = widgets.VBox([
+            widgets.Image(value=output_image1.value, format='png', width=600, height=600),
+            widgets.HTML(value=f"<div style='text-align:center; font-size:18px;'>⏱️ {dijkstra_duration:.6f} seconds</div>")
+        ])
+    else:
+        dijkstra_widget = widgets.HTML(value="<div style='text-align:center;'>No path</div>")
+
+    if path_bf:
+        output_image2.value = visualize_only_path(path_bf, G, "Bellman-Ford Path")
+        bf_widget = widgets.VBox([
+            widgets.Image(value=output_image2.value, format='png', width=600, height=600),
+            widgets.HTML(value=f"<div style='text-align:center; font-size:18px;'>⏱️ {bf_duration:.6f} seconds</div>")
+        ])
+    else:
+        bf_widget = widgets.HTML(value="<div style='text-align:center;'>No path</div>")
+
+    # Salary output with larger font
+    output_text.value = f"""
+        <h2 style='font-size:24px;'>Hello, {user}!</h2>
+        <h3 style='font-size:20px;'>Predicted Salaries</h3>
+        <ul style='font-size:18px;'>
+            {f"<li><b>Dijkstra:</b> ${salary_d}</li>" if salary_d else ""}
+            {f"<li><b>Bellman-Ford:</b> ${salary_bf}</li>" if salary_bf else ""}
+        </ul>
+    """
+
+    # Display everything
+    graphs = widgets.HBox([dijkstra_widget, bf_widget])
+    display(widgets.VBox([output_text, graphs]))
+
+
+start_button.on_click(show_input_page)
+submit_button.on_click(show_output_page)
+
+display(widgets.VBox([welcome_text, start_button]))
+
+def print_full_graph():
+    # Convert the custom graph to a NetworkX graph
+    nx_graph = nx.Graph()
+
+    # Add nodes and edges to the NetworkX graph
+    for node in G.adj:
+        nx_graph.add_node(node)
+    for u in G.adj:
+        for v, weight in G.adj[u]:
+            nx_graph.add_edge(u, v, weight=weight)
+
+    # Set up a layout for better readability, adjust k for better spacing
+    plt.figure(figsize=(14, 10))
+    pos = nx.spring_layout(nx_graph, k=.2, seed=42)  # Adjust "k" for more spacing (increase k if clustering persists)
+
+    # Alternative layouts you could try:
+    # pos = nx.circular_layout(nx_graph)
+    # pos = nx.kamada_kawai_layout(nx_graph)
+    # pos = nx.spectral_layout(nx_graph)
+
+    # Assign colors to nodes based on their category
+    node_colors = []
+    for node in nx_graph.nodes:
+        if node in avg_salary_job:
+            node_colors.append('lightblue')  # Job Roles
+        elif node in avg_salary_exp:
+            node_colors.append('lightgreen')  # Experience
+        elif node in avg_salary_edu:
+            node_colors.append('lightcoral')  # Education
+        elif node in salary_bins:
+            node_colors.append('lightyellow')  # Salary Bins
+
+    # Draw the nodes with customized size and color
+    nx.draw(nx_graph, pos, with_labels=True, node_color=node_colors, font_weight='bold', node_size=3000, font_size=8)
+
+    # Draw edges with customized width
+    nx.draw_networkx_edges(nx_graph, pos, width=1.5, alpha=0.5, edge_color='gray')
+
+    # Set title
+    plt.title('Entire Graph - Salary Prediction Model (Without Weights)', fontsize=16)
+
+    # Show plot
+    plt.tight_layout()
+    plt.show()
+
+# Call this function to print the entire graph with better layout
+print_full_graph()
+
