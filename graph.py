@@ -1,3 +1,5 @@
+# sydney sr, divya verma, anna kate wheeler
+
 # === imports ===
 import pandas as pd                    # for data manipulation
 import heapq                           # for priority queue in dijkstra's algorithm
@@ -219,9 +221,9 @@ category_colors = {
     'Job Role': 'lightblue',
     'ExpBin': 'lightgreen',
     'Education Level': 'lightcoral',
-    'SalaryBin': 'lightyellow'
-}
+    'SalaryBin': 'lightyellow'}
 
+# plots just the path from variables given to salary prediction
 def visualize_only_path(path, graph, title):
     G_path = nx.Graph()
     for i in range(len(path) - 1):
@@ -229,6 +231,7 @@ def visualize_only_path(path, graph, title):
         weight = next((w for nbr, w in graph.adj[u] if nbr == v), 1)
         G_path.add_edge(u, v, weight=weight)
 
+    # adjust visualization
     pos = nx.spring_layout(G_path)
     node_colors = []
     for node in G_path.nodes:
@@ -241,7 +244,6 @@ def visualize_only_path(path, graph, title):
     nx.draw(G_path, pos, with_labels=True, node_color=node_colors, node_size=3000, font_size=10, ax=ax)
     nx.draw_networkx_edges(G_path, pos, edge_color='red', width=2, ax=ax)
     ax.set_title(title)
-
     buf = BytesIO()
     plt.savefig(buf, format='png')
     plt.close(fig)
@@ -249,31 +251,36 @@ def visualize_only_path(path, graph, title):
     return buf.getvalue()
 
 # === UI ===
+#welcome screen
 welcome_text = widgets.HTML(value="<h1>Welcome to the Salary Predictor!</h1>")
 start_button = widgets.Button(description="Start")
 
+#input screen
 name_input = widgets.Text(description="Name:")
 major_input = widgets.Dropdown(options=list(avg_salary_job.keys()), description="Job Role:")
 edu_input = widgets.Dropdown(options=list(avg_salary_edu.keys()), description="Education:")
 exp_input = widgets.BoundedIntText(value=1, min=0, max=40, description="Experience:")
 submit_button = widgets.Button(description="Submit")
 
+#output screen
 output_text = widgets.HTML()
 output_image1 = widgets.Image(format='png')
 output_image2 = widgets.Image(format='png')
 
+#input screen widgets
 def show_input_page(_):
     welcome_text.close()
     start_button.close()
     display(widgets.VBox([name_input, major_input, edu_input, exp_input, submit_button]))
 
+#output screen widgets
 def show_output_page(_):
     global G
     user = name_input.value
     job = major_input.value
     edu = edu_input.value
     exp = exp_input.value
-
+    # makes graph with user given variables
     G = build_graph_with_profile(user_exp=exp, user_edu=edu, user_job=job)
 
     # Dijkstra
@@ -286,12 +293,13 @@ def show_output_page(_):
     path_bf, salary_bf = get_shortest_salary_path(G, job, method='bellman_ford', user_exp=exp, user_edu=edu, user_job=job)
     bf_duration = time.time() - start_time_bf
 
+    # handles exceptions
     if salary_d is None and salary_bf is None:
         output_text.value = "<h2 style='font-size:18px;'>No valid path found for your selection.</h2>"
         display(widgets.VBox([output_text]))
         return
 
-    # Prepare image output and timings
+    # print graphs and time for algorithm - dijkstra
     if path_d:
         output_image1.value = visualize_only_path(path_d, G, "Dijkstra Path")
         dijkstra_widget = widgets.VBox([
@@ -301,6 +309,7 @@ def show_output_page(_):
     else:
         dijkstra_widget = widgets.HTML(value="<div style='text-align:center;'>No path</div>")
 
+    # print graphs and time per algorithm - bellman-ford
     if path_bf:
         output_image2.value = visualize_only_path(path_bf, G, "Bellman-Ford Path")
         bf_widget = widgets.VBox([
@@ -310,7 +319,7 @@ def show_output_page(_):
     else:
         bf_widget = widgets.HTML(value="<div style='text-align:center;'>No path</div>")
 
-    # Salary output with larger font
+    # format output
     output_text.value = f"""
         <h2 style='font-size:24px;'>Hello, {user}!</h2>
         <h3 style='font-size:20px;'>Predicted Salaries</h3>
@@ -319,38 +328,28 @@ def show_output_page(_):
             {f"<li><b>Bellman-Ford:</b> ${salary_bf}</li>" if salary_bf else ""}
         </ul>
     """
-
-    # Display everything
     graphs = widgets.HBox([dijkstra_widget, bf_widget])
     display(widgets.VBox([output_text, graphs]))
-
+    print_full_graph(G)
 
 start_button.on_click(show_input_page)
 submit_button.on_click(show_output_page)
 
 display(widgets.VBox([welcome_text, start_button]))
 
-def print_full_graph():
-    # Convert the custom graph to a NetworkX graph
+# convert custom Graph object to NetworkX graph / display
+def print_full_graph(G):
     nx_graph = nx.Graph()
-
-    # Add nodes and edges to the NetworkX graph
+    # create networkx graph
     for node in G.adj:
         nx_graph.add_node(node)
     for u in G.adj:
         for v, weight in G.adj[u]:
             nx_graph.add_edge(u, v, weight=weight)
-
-    # Set up a layout for better readability, adjust k for better spacing
     plt.figure(figsize=(14, 10))
     pos = nx.spring_layout(nx_graph, k=.2, seed=42)  # Adjust "k" for more spacing (increase k if clustering persists)
 
-    # Alternative layouts you could try:
-    # pos = nx.circular_layout(nx_graph)
-    # pos = nx.kamada_kawai_layout(nx_graph)
-    # pos = nx.spectral_layout(nx_graph)
-
-    # Assign colors to nodes based on their category
+    # assign visualization colors
     node_colors = []
     for node in nx_graph.nodes:
         if node in avg_salary_job:
@@ -362,19 +361,9 @@ def print_full_graph():
         elif node in salary_bins:
             node_colors.append('lightyellow')  # Salary Bins
 
-    # Draw the nodes with customized size and color
+    # draw nodes and edges
     nx.draw(nx_graph, pos, with_labels=True, node_color=node_colors, font_weight='bold', node_size=3000, font_size=8)
-
-    # Draw edges with customized width
     nx.draw_networkx_edges(nx_graph, pos, width=1.5, alpha=0.5, edge_color='gray')
-
-    # Set title
-    plt.title('Entire Graph - Salary Prediction Model (Without Weights)', fontsize=16)
-
-    # Show plot
+    plt.title('Entire Graph - Salary Prediction Model', fontsize=16)
     plt.tight_layout()
     plt.show()
-
-# Call this function to print the entire graph with better layout
-print_full_graph()
-
